@@ -130,7 +130,6 @@ getGroupSE <- function(
   se
 
 }
-
 #' Export Group BigWigs
 #' 
 #' This function will group, summarize and export a bigwig for each group in an ArchRProject.
@@ -158,8 +157,8 @@ getGroupBW <- function(
   verbose = TRUE,
   threads = getArchRThreads(),
   logFile = createLogFile("getGroupBW")
-  ){
-
+){
+  
   .validInput(input = ArchRProj, name = "ArchRProj", valid = c("ArchRProj"))
   .validInput(input = groupBy, name = "useMatrix", valid = c("character"))
   .validInput(input = normMethod, name = "groupBy", valid = c("character"))
@@ -169,39 +168,39 @@ getGroupBW <- function(
   .validInput(input = verbose, name = "verbose", valid = c("boolean"))
   .validInput(input = threads, name = "threads", valid = c("integer"))
   .validInput(input = logFile, name = "logFile", valid = c("character"))
-
+  
   tstart <- Sys.time()
-
+  
   normMethods <- c("None", "ReadsInTSS", "nCells", "ReadsInPromoter", "nFrags")
   
   if(tolower(normMethod) %ni% tolower(normMethods)){
     stop(paste0("normMethod (",normMethod,") not in supported normMethods : ", paste0(normMethods, collapse=", ")))
   }
-
+  
   .startLogging(logFile = logFile)
   .logThis(normMethod, "normMethod", logFile = logFile)
-
+  
   ArrowFiles <- getArrowFiles(ArchRProj)
   Groups <- getCellColData(ArchRProj = ArchRProj, select = groupBy, drop = TRUE)
-
+  
   if(tolower(normMethod) %in% tolower(c("ReadsInTSS", "ReadsInPromoter", "nFrags"))){
     normBy <- getCellColData(ArchRProj = ArchRProj, select = normMethod)
   }else{
     normBy <- NULL
   }
-
+  
   if(!.isDiscrete(Groups)){
     stop("groupBy must be a discrete variable!")
   }
-
+  
   Cells <- ArchRProj$cellNames
-
+  
   cellGroups <- split(Cells, Groups)
-
+  
   if(!is.null(maxCells)){
-  
+    
     gnames <- names(cellGroups)
-  
+    
     cellGroups <- lapply(seq_along(cellGroups), function(x){
       if(length(cellGroups[[x]]) > maxCells){
         sample(cellGroups[[x]], maxCells)
@@ -209,19 +208,19 @@ getGroupBW <- function(
         cellGroups[[x]]
       }
     })
-  
+    
     names(cellGroups) <- gnames
-  
+    
   }
-
+  
   bwDir1 <- file.path(getOutputDirectory(ArchRProj), "GroupBigWigs")
   bwDir2 <- file.path(getOutputDirectory(ArchRProj), "GroupBigWigs", groupBy)
-
+  
   dir.create(bwDir1, showWarnings = FALSE)
   dir.create(bwDir2, showWarnings = FALSE)
-
+  
   o <- suppressWarnings(file.remove(list.files(bwDir2, full.names = TRUE)))
-
+  
   #cellsInArrow <- split(rownames(getCellColData(ArchRProj)), getCellColData(ArchRProj)$Sample)
   cellsInArrow <- split(
     rownames(getCellColData(ArchRProj)), 
@@ -231,15 +230,15 @@ getGroupBW <- function(
   chromLengths <- getChromLengths(ArchRProj)
   chromSizes <- getChromSizes(ArchRProj)
   tiles <- unlist(slidingWindows(chromSizes, width = tileSize, step = tileSize))
-
+  
   if(threads > 1){
     h5disableFileLocking()
   }
-
+  
   covFiles <- c()
-
+  
   for(i in seq_along(cellGroups)){
-
+    
     o <- .createGroupBW(
       i = i, 
       cellGroups = cellGroups,
@@ -258,19 +257,19 @@ getGroupBW <- function(
       logFile = logFile,
       threads = threads
     )
-
+    
     covFiles <- c(covFiles, o)
-
+    
   }
-
+  
   if(threads > 1){
     h5enableFileLocking()
   }
-
+  
   .endLogging(logFile = logFile)
-
+  
   covFiles
-
+  
 }
 
 .createGroupBW <- function(
@@ -290,22 +289,22 @@ getGroupBW <- function(
   verbose = TRUE,
   logFile = NULL,
   threads = 1
-  ){
-
+){
+  
   .logDiffTime(sprintf("%s (%s of %s) : Creating BigWig for Group", names(cellGroups)[i], i, length(cellGroups)), tstart, logFile = logFile, verbose = verbose)
-
+  
   #Cells
   cellGroupi <- cellGroups[[i]]
   #print(sum(normBy[cellGroupi, 1]))
-
+  
   #Bigwig File!
   covFile <- file.path(bwDir, paste0(make.names(names(cellGroups)[i]), "-TileSize-",tileSize,"-normMethod-",normMethod,"-ArchR.bw"))
   rmf <- .suppressAll(file.remove(covFile))
-
+  
   covList <- .safelapply(seq_along(availableChr), function(k){
-
+    
     it <- 0
-
+    
     for(j in seq_along(ArrowFiles)){
       cellsInI <- sum(cellsInArrow[[names(ArrowFiles)[j]]] %in% cellGroupi)
       if(cellsInI > 0){
@@ -317,28 +316,28 @@ getGroupBW <- function(
         }
       }
     }
-
+    
     tilesk <- tiles[BiocGenerics::which(seqnames(tiles) %bcin% availableChr[k])]
-
+    
     if(length(fragik) == 0){
-
+      
       tilesk$reads <- 0
-
+      
     }else{
-
+      
       #N Tiles
       nTiles <- trunc(chromLengths[availableChr[k]] / tileSize) + 1
-
+      
       #Create Sparse Matrix
       matchID <- S4Vectors::match(mcols(fragik)$RG, cellGroupi)
       
       mat <- Matrix::sparseMatrix(
-          i = c(trunc(start(fragik) / tileSize), trunc(end(fragik) / tileSize)) + 1,
-          j = as.vector(c(matchID, matchID)),
-          x = rep(1,  2*length(fragik)),
-          dims = c(nTiles, length(cellGroupi))
-        )
-
+        i = c(trunc(start(fragik) / tileSize), trunc(end(fragik) / tileSize)) + 1,
+        j = as.vector(c(matchID, matchID)),
+        x = rep(1,  2*length(fragik)),
+        dims = c(nTiles, length(cellGroupi))
+      )
+      
       if(!is.null(ceiling)){
         mat@x[mat@x > ceiling] <- ceiling
       }
@@ -346,9 +345,9 @@ getGroupBW <- function(
       mat <- Matrix::rowSums(mat)
       
       rm(fragik, matchID)
-         
+      
       tilesk$reads <- mat
-
+      
       if(tolower(normMethod) %in% c("readsintss", "readsinpromoter", "nfrags")){
         tilesk$reads <- tilesk$reads * 10^4 / sum(normBy[cellGroupi, 1])
       }else if(tolower(normMethod) %in% c("ncells")){
@@ -357,23 +356,248 @@ getGroupBW <- function(
       }else{
         stop("NormMethod not recognized!")
       }
-
+      
     }
-
+    
     tilesk <- coverage(tilesk, weight = tilesk$reads)[[availableChr[k]]]
-
+    
     tilesk
-
+    
   }, threads = threads)
-
+  
   names(covList) <- availableChr
-
+  
   covList <- as(covList, "RleList")
-
+  
   rtracklayer::export.bw(object = covList, con = covFile)
-
+  
   return(covFile)
-
+  
 }
 
 
+
+
+#' Export Group BigWigs in single bp in fast way
+#' 
+#' This function will group, summarize and export a bigwig for each group in an ArchRProject.
+#'
+#' @param ArchRProj An `ArchRProject` object.
+#' @param groupBy A string that indicates how cells should be grouped. This string corresponds to one of the standard or
+#' user-supplied `cellColData` metadata columns (for example, "Clusters"). Cells with the same value annotated in this metadata
+#' column will be grouped together and the average signal will be plotted.
+#' @param normMethod The name of the column in `cellColData` by which normalization should be performed. The recommended and default value
+#' is "ReadsInTSS" which simultaneously normalizes tracks based on sequencing depth and sample data quality.
+#' @param tileSize The numeric width of the tile/bin in basepairs for plotting ATAC-seq signal tracks. All insertions in a single bin will be summed.
+#' @param maxCells Maximum number of cells used for each bigwig.
+#' @param ceiling Maximum contribution of accessibility per cell in each tile.
+#' @param verbose A boolean specifying to print messages during computation.
+#' @param threads An integer specifying the number of threads for parallel.
+#' @param logFile The path to a file to be used for logging ArchR output.
+#' @export
+getGroupBWSingleFast <- function(
+  ArchRProj = NULL,
+  groupBy = "Sample",
+  normMethod = "ReadsInTSS",
+  tileSize = 1,
+  maxCells = 1000,
+  ceiling = 4,
+  verbose = TRUE,
+  threads = getArchRThreads(),
+  logFile = createLogFile("getGroupBWSingleFast")
+){
+  
+  .validInput(input = ArchRProj, name = "ArchRProj", valid = c("ArchRProj"))
+  .validInput(input = groupBy, name = "useMatrix", valid = c("character"))
+  .validInput(input = normMethod, name = "groupBy", valid = c("character"))
+  .validInput(input = tileSize, name = "divideN", valid = c("integer"))
+  .validInput(input = maxCells, name = "scaleTo", valid = c("integer", "null"))
+  .validInput(input = ceiling, name = "ceiling", valid = c("integer", "null"))
+  .validInput(input = verbose, name = "verbose", valid = c("boolean"))
+  .validInput(input = threads, name = "threads", valid = c("integer"))
+  .validInput(input = logFile, name = "logFile", valid = c("character"))
+  
+  tstart <- Sys.time()
+  
+  normMethods <- c("None", "ReadsInTSS", "nCells", "ReadsInPromoter", "nFrags")
+  
+  if(tolower(normMethod) %ni% tolower(normMethods)){
+    stop(paste0("normMethod (",normMethod,") not in supported normMethods : ", paste0(normMethods, collapse=", ")))
+  }
+  
+  .startLogging(logFile = logFile)
+  .logThis(normMethod, "normMethod", logFile = logFile)
+  
+  #path of arrow files
+  ArrowFiles <- getArrowFiles(ArchRProj)
+  #vector of groups of cells
+  Groups <- getCellColData(ArchRProj = ArchRProj, select = groupBy, drop = TRUE)
+  
+  #dataframe of variables for normalization:eg ReadsInTSS
+  if(tolower(normMethod) %in% tolower(c("ReadsInTSS", "ReadsInPromoter", "nFrags"))){
+    normBy <- getCellColData(ArchRProj = ArchRProj, select = normMethod)
+  }else{
+    normBy <- NULL
+  }
+  
+  #check whether Groups is discrete or not
+  if(!.isDiscrete(Groups)){
+    stop("groupBy must be a discrete variable!")
+  }
+  
+  #vector of cell names
+  Cells <- ArchRProj$cellNames
+  #split the Cells into groups into a list
+  cellGroups <- split(Cells, Groups)
+  
+  #sample in each group so each group has maxCells number of cells
+  if(!is.null(maxCells)){
+    
+    gnames <- names(cellGroups)
+    
+    cellGroups <- lapply(seq_along(cellGroups), function(x){
+      if(length(cellGroups[[x]]) > maxCells){
+        sample(cellGroups[[x]], maxCells)
+      }else{
+        cellGroups[[x]]
+      }
+    })
+    
+    names(cellGroups) <- gnames
+    
+  }
+  
+  bwDir1 <- file.path(getOutputDirectory(ArchRProj), "GroupBigWigs")
+  bwDir2 <- file.path(getOutputDirectory(ArchRProj), "GroupBigWigs", groupBy)
+  
+  dir.create(bwDir1, showWarnings = FALSE)
+  dir.create(bwDir2, showWarnings = FALSE)
+  
+  o <- suppressWarnings(file.remove(list.files(bwDir2, full.names = TRUE)))
+  
+  #cellsInArrow <- split(rownames(getCellColData(ArchRProj)), getCellColData(ArchRProj)$Sample)
+  #return a list corresponding to cells in each arrow file
+  cellsInArrow <- split(
+    rownames(getCellColData(ArchRProj)), 
+    stringr::str_split(rownames(getCellColData(ArchRProj)), pattern="\\#", simplify=TRUE)[,1]
+  )
+  #vector of chrs in the ArchR project
+  availableChr <- .availableSeqnames(head(getArrowFiles(ArchRProj)))
+  #vector of chr lengths of availableChr
+  chromLengths <- getChromLengths(ArchRProj)
+  #chromSizes is a GRanges object 
+  chromSizes <- getChromSizes(ArchRProj)
+  #tiles is a GRanges object that split chromSizes into bins of width tileSize
+  if(tileSize>1){
+    tiles <- unlist(slidingWindows(chromSizes, width = tileSize, step = tileSize))
+    
+  }else{
+    tiles <- NULL
+  }
+  
+  if(threads > 1){
+    h5disableFileLocking()
+  }
+  
+  covFiles <- c()
+  #for loop to get bigwg by group
+  for(i in seq_along(cellGroups)){
+    
+    o <- .createGroupBWSingleFast(
+      i = i, 
+      cellGroups = cellGroups,
+      ArrowFiles = getArrowFiles(ArchRProj), 
+      cellsInArrow = cellsInArrow, 
+      availableChr = availableChr,
+      chromLengths = chromLengths,
+      normMethod = normMethod,
+      normBy = normBy,
+      ceiling = ceiling,
+      tiles = tiles, 
+      tileSize = tileSize,
+      bwDir = bwDir2,
+      tstart = tstart, 
+      verbose = verbose,
+      logFile = logFile,
+      threads = threads
+    )
+    
+    covFiles <- c(covFiles, o)
+    
+  }
+  
+  if(threads > 1){
+    h5enableFileLocking()
+  }
+  
+  .endLogging(logFile = logFile)
+  
+  covFiles
+  
+}
+
+.createGroupBWSingleFast <- function(
+  i = NULL, 
+  cellGroups = NULL,
+  ArrowFiles = NULL, 
+  cellsInArrow = NULL, 
+  availableChr = NULL,
+  chromLengths = NULL, 
+  tiles = NULL,
+  ceiling = NULL,
+  tileSize = 100,
+  normMethod = NULL,
+  normBy = NULL,
+  bwDir = "bigwigs",
+  tstart = NULL, 
+  verbose = TRUE,
+  logFile = NULL,
+  threads = 1
+){
+  
+  .logDiffTime(sprintf("%s (%s of %s) : Creating BigWig for Group", names(cellGroups)[i], i, length(cellGroups)), tstart, logFile = logFile, verbose = verbose)
+  
+  #Cells in group i
+  cellGroupi <- cellGroups[[i]]
+  #print(sum(normBy[cellGroupi, 1]))
+  
+  #Bigwig File! covFile is the bigwig file name
+  covFile <- file.path(bwDir, paste0(make.names(names(cellGroups)[i]), "-TileSize-",tileSize,"-normMethod-",normMethod,"-ArchR.bw"))
+  rmf <- .suppressAll(file.remove(covFile))
+  
+  covList <- .safelapply(seq_along(availableChr), function(k){
+    
+    it <- 0
+    # loop through arrow files to get fragment of availableChr[k]. RG is the cell name
+    # return a GRanges object that include
+    for(j in seq_along(ArrowFiles)){
+      # cellsInI is the number of cells in ArrowFiles[j] that are also in cellgroup i
+      cellsInI <- sum(cellsInArrow[[names(ArrowFiles)[j]]] %in% cellGroupi)
+      if(cellsInI > 0){
+        it <- it + 1
+        if(it == 1){
+          #get frag of chr k of cellGroupi from ArrowFiles[j]
+          fragik <- .getFragsFromArrow(ArrowFiles[j], chr = availableChr[k], out = "GRanges", cellNames = cellGroupi)
+        }else{
+          fragik <- c(fragik, .getFragsFromArrow(ArrowFiles[j], chr = availableChr[k], out = "GRanges", cellNames = cellGroupi))
+        }
+      }
+    }
+    
+
+    #covergae function is enough
+    #tilesk <- coverage(tilesk, weight = tilesk$reads)[[availableChr[k]]]
+    
+    tilesk <- coverage(fragik)[[availableChr[k]]]
+    
+  }, threads = threads)
+  
+  names(covList) <- availableChr
+  
+  covList <- as(covList, "RleList")
+  
+  rtracklayer::export.bw(object = covList, con = covFile)
+  
+  return(covFile)
+  
+}
